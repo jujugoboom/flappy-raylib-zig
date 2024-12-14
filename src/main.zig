@@ -40,12 +40,22 @@ var score: i32 = 0;
 var game_running = false;
 var game_waiting = false;
 var game_over = false;
+var auto_play = false;
+
+const time_scale = 1;
 
 fn isJumpInput() bool {
     return rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left) or rl.isKeyPressed(rl.KeyboardKey.key_space);
 }
 
+fn autoplayInput() bool {
+    return rl.isKeyPressed(rl.KeyboardKey.key_a);
+}
+
 fn update() void {
+    if (autoplayInput()) {
+        auto_play = !auto_play;
+    }
     if (!game_running) return;
     // wait for first input
     if (game_waiting) {
@@ -55,14 +65,14 @@ fn update() void {
             return;
         }
     }
-    const frame_time = rl.getFrameTime();
+    const frame_time = rl.getFrameTime() * time_scale;
     if (pipes[0].top_pipe.x < -(pipe_width + 20)) {
         pipes[0] = pipes[1];
         pipes[1] = pipes[2];
         pipes[2] = generatePipe(pipes[1].top_pipe.x + pipe_interval);
         score += 1;
     }
-    if (rl.checkCollisionRecs(bird, pipes[0].top_pipe) or rl.checkCollisionRecs(bird, pipes[0].bottom_pipe) or bird.y > screen_height) {
+    if (!auto_play and (rl.checkCollisionRecs(bird, pipes[0].top_pipe) or rl.checkCollisionRecs(bird, pipes[0].bottom_pipe) or bird.y > screen_height)) {
         game_over = true;
         game_running = false;
     }
@@ -77,18 +87,35 @@ fn update() void {
     bird_vel = bird_vel.clampValue(-500, 1000);
     bird.y += bird_vel.y * frame_time;
     bird.y = @max(bird.y, 0);
+    if (auto_play) {
+        bird.y = pipes[0].top_pipe.height + (pipe_gap / 2);
+    }
+}
+
+fn drawBird() void {
+    const bird_rot = rl.math.lerp(-90, 90, rl.math.normalize(bird_vel.y, -1000, 1000));
+    const bird_draw_rec = rl.Rectangle.init(bird.x + 16, bird.y + 16, bird.width, bird.height);
+    rl.drawRectanglePro(bird_draw_rec, rl.Vector2.init(16, 16), bird_rot, rl.fade(rl.Color.yellow, 1.0));
+    rl.drawRectanglePro(rl.Rectangle.init(bird_draw_rec.x, bird_draw_rec.y, 20, 10), rl.Vector2.init(-5, 3), bird_rot, rl.Color.black);
+    rl.drawRectanglePro(rl.Rectangle.init(bird_draw_rec.x, bird_draw_rec.y, 4, 4), rl.Vector2.init(-5, 9), bird_rot, rl.Color.black);
+}
+
+fn drawPipe(pipe: Pipe) void {
+    rl.drawRectangleRec(pipe.top_pipe, rl.Color.green);
+    rl.drawRectangleRec(rl.Rectangle.init(pipe.top_pipe.x - 10, pipe.top_pipe.y + (pipe.top_pipe.height - 20), pipe.top_pipe.width + 20, 20), rl.Color.green);
+    rl.drawRectangleRec(pipe.bottom_pipe, rl.Color.green);
+    rl.drawRectangleRec(rl.Rectangle.init(pipe.bottom_pipe.x - 10, pipe.bottom_pipe.y, pipe.bottom_pipe.width + 20, 20), rl.Color.green);
 }
 
 fn drawGame() void {
     rl.beginDrawing();
     rl.clearBackground(rl.Color.sky_blue);
 
-    rl.drawRectangleRec(bird, rl.fade(rl.Color.yellow, 1.0));
+    drawBird();
 
     for (pipes) |pipe| {
         if (pipe.top_pipe.x < screen_width) {
-            rl.drawRectangleRec(pipe.top_pipe, rl.Color.green);
-            rl.drawRectangleRec(pipe.bottom_pipe, rl.Color.green);
+            drawPipe(pipe);
         }
     }
 
@@ -106,11 +133,20 @@ fn drawGame() void {
             );
         }
         const curr_screen_w_i = rl.getScreenWidth();
+        const curr_screen_h_i = rl.getScreenHeight();
         const score_text = rl.textFormat("Score: %i", .{score});
         rl.drawText(
             score_text,
             curr_screen_w_i - (rl.measureText(score_text, 20) + 20),
             30,
+            20,
+            rl.Color.black,
+        );
+        const fps_text = rl.textFormat("CURRENT FPS: %i", .{rl.getFPS()});
+        rl.drawText(
+            fps_text,
+            curr_screen_w_i - (rl.measureText(fps_text, 20) + 20),
+            curr_screen_h_i - 30,
             20,
             rl.Color.black,
         );
@@ -156,7 +192,7 @@ fn generateStartingPipes() [3]Pipe {
 pub fn main() !void {
     rl.initWindow(screen_width, screen_height, "flappy");
     defer rl.closeWindow();
-    rl.setTargetFPS(60);
+    rl.setTargetFPS(10000);
 
     while (!rl.windowShouldClose()) {
         update();
